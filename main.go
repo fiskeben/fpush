@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/gregdel/pushover"
 )
 
 const stateFilePath = ".config/fpush/"
@@ -35,6 +34,7 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+	verboseLog("last push %v", lastPush)
 
 	now := time.Now()
 
@@ -45,7 +45,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var filename string
+	filenames := make([]string, 0)
 
 	for _, d := range dirs {
 		if !strings.HasSuffix(d.Name(), ".jpg") {
@@ -54,20 +54,28 @@ func main() {
 
 		age := now.Sub(d.ModTime())
 		diff := d.ModTime().Sub(lastPush)
-		verboseLog("checking %s (age=%v)", d.Name(), age)
-		if age.Seconds() < 360 && diff > 3600 {
-			filename = dirname + d.Name()
-			lastPush = now
-			break
+		verboseLog("checking %s (age=%v, since last push=%v)", d.Name(), age, diff)
+		if age.Seconds() < 360 && diff.Seconds() > 3600 {
+			log.Printf("ok %s", d.Name())
+			filename := dirname + d.Name()
+			filenames = append(filenames, filename)
 		}
 	}
 
-	if filename != "" {
-		verboseLog("found file to alert")
+	if len(filenames) > 0 {
+		verboseLog("found files to alert")
+		filenames = limitFiles(filenames)
+		filename, err := concatenateFiles(filenames)
+		if err != nil {
+			log.Println(err)
+			filename = filenames[0]
+		}
 		if err = sendPushNotification(filename); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		log.Println(filename)
+		lastPush = now
 	}
 
 	verboseLog("writing state file")
@@ -77,86 +85,26 @@ func main() {
 	}
 }
 
+func limitFiles(files []string) []string {
+	if len(files) <= 4 {
+		return files
+	}
+
+	res := make([]string, 4)
+	res[0] = files[0]
+	res[3] = files[len(files)-1]
+	files = files[1 : len(files)-1]
+	halves := math.Floor(float64(len(files) / 2))
+	first := int(math.Floor(float64(halves / 2)))
+	second := int(halves + math.Floor(float64(halves/2)))
+	res[1] = files[first]
+	res[2] = files[second]
+
+	return res
+}
+
 func verboseLog(msg string, args ...interface{}) {
 	if verbose {
 		fmt.Printf(msg+"\n", args...)
 	}
-}
-
-func readStateFile() (time.Time, error) {
-	home := getHome()
-	b, err := ioutil.ReadFile(home + stateFilePath + stateFileName)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return time.Now(), nil
-		}
-		return time.Now(), fmt.Errorf("unable to read state file: %v", err)
-	}
-	t, err := time.Parse(time.RFC3339, string(b))
-	if err != nil {
-		return time.Now(), fmt.Errorf("failed to parse state date: %v", err)
-	}
-	return t, nil
-}
-
-func writeStateFile(t time.Time) error {
-	home := getHome()
-	d := t.Format(time.RFC3339)
-	err := ioutil.WriteFile(home+stateFilePath+stateFileName, []byte(d), os.FileMode(0600))
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("failed to write state file: %v", err)
-		}
-		if err = os.MkdirAll(home+stateFilePath, os.FileMode(0770)); err != nil {
-			return fmt.Errorf("failed to create config folder: %v", err)
-		}
-		f, err := os.Create(home + stateFilePath + stateFileName)
-		if err != nil {
-			return fmt.Errorf("failed to create state file: %v", err)
-		}
-		_, err = f.WriteString(d)
-		if err != nil {
-			return fmt.Errorf("failed to write new state file: %v", err)
-		}
-	}
-	return nil
-}
-
-func sendPushNotification(filename string) error {
-	p := pushover.New(os.Getenv("PUSHOVER_KEY"))
-	r := pushover.NewRecipient(os.Getenv("PUSHOVER_RECIPIENT_KEY"))
-	m := pushover.NewMessageWithTitle("Movement!", "Movement has been detected.")
-
-	if err := addAttachment(m, filename); err != nil {
-		log.Println(err.Error())
-	}
-
-	res, err := p.SendMessage(m, r)
-	if err != nil {
-		return fmt.Errorf("failed to send push notification: %v", err)
-	}
-	log.Println(res.String())
-	return nil
-}
-
-func addAttachment(m *pushover.Message, filename string) error {
-	file, err := os.Open(filename)
-	if err != nil {
-		return fmt.Errorf("failed to open file '%s': %v", filename, err)
-	}
-	if err := m.AddAttachment(file); err != nil {
-		return fmt.Errorf("failed to add attachment '%s', skipping: %v", filename, err)
-	}
-	return nil
-}
-
-func getHome() string {
-	h := os.Getenv("HOME")
-	if h != "" {
-		if !strings.HasSuffix(h, "/") {
-			h = h + "/"
-		}
-		return h
-	}
-	panic("unable to locate home dir!") // todo
 }
