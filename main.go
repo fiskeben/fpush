@@ -11,9 +11,6 @@ import (
 	"time"
 )
 
-const stateFilePath = ".config/fpush/"
-const stateFileName = "state"
-
 var verbose bool
 
 func main() {
@@ -39,27 +36,11 @@ func main() {
 	now := time.Now()
 
 	verboseLog("reading %s", dirname)
-	dirs, err := ioutil.ReadDir(dirname)
+
+	filenames, err := findFiles(dirname, now, lastPush)
 	if err != nil {
-		fmt.Printf("failed to read %s: %v", dirname, err)
+		fmt.Println(err)
 		os.Exit(1)
-	}
-
-	filenames := make([]string, 0)
-
-	for _, d := range dirs {
-		if !strings.HasSuffix(d.Name(), ".jpg") {
-			continue
-		}
-
-		age := now.Sub(d.ModTime())
-		diff := d.ModTime().Sub(lastPush)
-		verboseLog("checking %s (age=%v, since last push=%v)", d.Name(), age, diff)
-		if age.Seconds() < 360 && diff.Seconds() > 3600 {
-			log.Printf("ok %s", d.Name())
-			filename := dirname + d.Name()
-			filenames = append(filenames, filename)
-		}
 	}
 
 	if len(filenames) > 0 {
@@ -83,6 +64,39 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+}
+
+func findFiles(dirname string, now time.Time, lastPush time.Time) ([]string, error) {
+	files, err := ioutil.ReadDir(dirname)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read dir '%s': %v", dirname, err)
+	}
+
+	filenames := make([]string, 0)
+
+	for _, f := range files {
+		if !strings.HasSuffix(f.Name(), ".jpg") {
+			continue
+		}
+
+		if checkFile(f, now, lastPush) {
+			filename := dirname + f.Name()
+			filenames = append(filenames, filename)
+		}
+	}
+
+	return filenames, nil
+}
+
+type fileInfo interface {
+	ModTime() time.Time
+}
+
+func checkFile(f fileInfo, now, lastPush time.Time) bool {
+	age := now.Sub(f.ModTime())
+	diff := now.Sub(lastPush)
+	log.Printf("%v <= %v %v >= %v", age.Seconds(), (5 * time.Minute).Seconds(), diff.Seconds(), (60 * time.Minute).Seconds())
+	return age.Seconds() <= (5*time.Minute).Seconds() && diff.Seconds() >= (60*time.Minute).Seconds()
 }
 
 func limitFiles(files []string) []string {

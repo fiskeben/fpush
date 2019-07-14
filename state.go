@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+const stateFilePath = ".config/fpush/"
+const stateFileName = "state"
+
 func readStateFile() (time.Time, error) {
 	def := time.Now().Add(-61 * time.Minute)
 	home := getHome()
