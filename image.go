@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/draw"
 	"image/jpeg"
-	"log"
 	"math"
 	"os"
 	"strings"
@@ -13,6 +12,10 @@ import (
 )
 
 func concatenateFiles(files []string) (string, error) {
+	if len(files) == 1 {
+		return files[0], nil
+	}
+
 	images := make([]image.Image, len(files))
 	verboseLog("concatenate %d files", len(files))
 	for i, f := range files {
@@ -43,7 +46,14 @@ func openImage(path string) (image.Image, error) {
 }
 
 func drawImages(images []image.Image) image.Image {
-	rect := image.Rect(0, 0, 640*2, 480+480*int(math.Floor(float64((len(images)-1)/2))))
+	if len(images) == 1 {
+		return images[0]
+	}
+
+	width := 640 * 2
+	height := 480 + 480*int(math.Floor(float64((len(images)-1)/2)))
+
+	rect := image.Rect(0, 0, width, height)
 	dst := image.NewRGBA(rect)
 
 	var r image.Rectangle
@@ -51,7 +61,6 @@ func drawImages(images []image.Image) image.Image {
 		x := (i % 2) * 640
 		y := int(math.Floor(float64(i/2))) * 480
 		r = image.Rect(x, y, x+640, y+480)
-		log.Printf("draw to %v", r)
 		draw.Draw(dst, r, src, image.ZP, draw.Over)
 	}
 	return dst

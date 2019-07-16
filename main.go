@@ -26,7 +26,7 @@ func main() {
 		dirname = dirname + "/"
 	}
 
-	lastPush, err := readStateFile()
+	lastPush, err := getLastPushTime()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -95,7 +95,6 @@ type fileInfo interface {
 func checkFile(f fileInfo, now, lastPush time.Time) bool {
 	age := now.Sub(f.ModTime())
 	diff := now.Sub(lastPush)
-	log.Printf("%v <= %v %v >= %v", age.Seconds(), (5 * time.Minute).Seconds(), diff.Seconds(), (60 * time.Minute).Seconds())
 	return age.Seconds() <= (5*time.Minute).Seconds() && diff.Seconds() >= (60*time.Minute).Seconds()
 }
 

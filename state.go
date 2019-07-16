@@ -11,17 +11,24 @@ import (
 const stateFilePath = ".config/fpush/"
 const stateFileName = "state"
 
-func readStateFile() (time.Time, error) {
-	def := time.Now().Add(-61 * time.Minute)
+var nowfunc = time.Now
+
+func getLastPushTime() (time.Time, error) {
 	home := getHome()
-	b, err := ioutil.ReadFile(home + stateFilePath + stateFileName)
+	return readStateFile(home + stateFilePath + stateFileName)
+}
+
+func readStateFile(path string) (time.Time, error) {
+	def := nowfunc().Add(-60 * time.Minute)
+	b, err := ioutil.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return def, nil
 		}
 		return def, fmt.Errorf("unable to read state file: %v", err)
 	}
-	t, err := time.Parse(time.RFC3339, string(b))
+	s := strings.TrimSpace(string(b))
+	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
 		return def, fmt.Errorf("failed to parse state date: %v", err)
 	}
